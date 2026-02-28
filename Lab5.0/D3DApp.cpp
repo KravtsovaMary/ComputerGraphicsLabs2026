@@ -543,7 +543,17 @@ void D3DApp::UpdateCB(float dt)
     XMStoreFloat4x4(&cb.WorldViewProj, XMMatrixTranspose(world * view * proj));
 
     cb.LightPosW = { 5.0f, 8.0f, -5.0f };
-    cb.EyePosW = mCamera.GetEyePosW();
+
+    XMFLOAT3 eyePos = mCamera.GetEyePosW();
+    cb.EyePosW = eyePos;
+
+    float distanceToObject = sqrt(eyePos.x * eyePos.x + eyePos.y * eyePos.y + eyePos.z * eyePos.z);
+    //cb.EyePosW = mCamera.GetEyePosW();
+    float speedScale = mReferenceDistance / max(distanceToObject, 0.5f); // избегаем деления на 0
+    speedScale = Clamp(speedScale, 0.5f, 3.0f); // ограничиваем масштаб
+
+    float currentSpeed = mBaseAnimationSpeed * speedScale;
+    currentSpeed = Clamp(currentSpeed, mMinSpeed, mMaxSpeed);
     cb.DiffuseColor = { 0.8f, 0.8f, 0.8f, 1.0f };
     cb.SpecColorPower = { 1.0f, 1.0f, 1.0f, 32.0f };
 
@@ -552,7 +562,7 @@ void D3DApp::UpdateCB(float dt)
     cb.UVTileX = 2.0f;
     cb.UVTileY = 2.0f;
     // Анимация: медленная прокрутка по U
-    cb.UVOffsetX = mTotalTime * 0.05f;   // скорость прокрутки
+    cb.UVOffsetX = mTotalTime * currentSpeed;   // скорость прокрутки
     cb.UVOffsetY = 0.0f;
 
     // UseTexture проставляется в Draw() отдельно для каждого объекта

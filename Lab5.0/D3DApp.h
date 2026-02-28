@@ -44,6 +44,12 @@ struct PerObjectCB
     // ?? Флаг: использовать текстуру или цвет вершины ??
     int   UseTexture = 0;      // 1 = sample texture, 0 = use vertex color
     float pad2[3] = {};
+
+    // Новые поля для отслеживающей точки
+    float  SpotIntensity = 1.0f;      // интенсивность точки (0-2)
+    float  SpotSpeed = 0.0f;           // текущая скорость для отладки
+    float  SpotPosX = 0.5f;            // позиция точки по X (0-1)
+    float  SpotPosY = 0.5f;            // позиция точки по Y (0-1)
 };
 
 // ================================================================
@@ -91,6 +97,20 @@ private:
     void BuildGeometry();
     void BuildConstantBuffer();
     void BuildViewportScissor();
+
+    // Параметры для зависимости скорости от расстояния
+    float mBaseAnimationSpeed = 0.05f;     // базовая скорость анимации
+    float mDistanceFactor = 2.0f;           // коэффициент влияния расстояния
+    float mMinSpeed = 0.02f;                 // минимальная скорость
+    float mMaxSpeed = 0.5f;                   // максимальная скорость
+    float mReferenceDistance = 5.0f;      // эталонное расстояние (нормальное расстояние)
+
+    // Параметры для отслеживающей точки
+    float mSpotIntensity = 1.5f;        // яркость точки
+    float mSpotPosX = 0.5f;             // позиция точки X (центр текстуры)
+    float mSpotPosY = 0.5f;             // позиция точки Y
+    bool  mSpotPulseEnabled = true;     // пульсация точки
+    bool  mSpotTrailEnabled = true;     // след от движения
 
     // ?? Текстуры ???????????????????????????????????????????????
     void BuildTextures();
