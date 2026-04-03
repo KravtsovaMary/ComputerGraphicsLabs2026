@@ -7,32 +7,20 @@
 
 using namespace DirectX;
 
-// std::clamp доступен только с C++17. ќпредел€ем свой Ч работает везде.
 template<typename T>
 static inline T Clamp(T val, T lo, T hi)
 {
     return val < lo ? lo : (val > hi ? hi : val);
 }
 
-// ================================================================
-//  OrbitalCamera Ч облЄт модели
-//
-//  ”правление:
-//    Ћ ћ (drag)          Ч вращение (yaw / pitch) вокруг цели
-//    ѕ ћ (drag)          Ч панорамирование (pan) цели
-//    —кролл / W S        Ч zoom (приближение / удаление)
-//    A D / стрелки вл/вп Ч горизонтальный pan
-//    Q E / стрелки вв/вн Ч вертикальный pan
-// ================================================================
 
 class OrbitalCamera
 {
 public:
-    // Ќастраиваемые параметры
-    float sensitivity = 0.005f;   // радиан / пиксель (вращение)
-    float panSpeed = 0.002f;   // world units / пиксель (pan)
-    float zoomSpeed = 0.5f;     // world units / тик колеса
-    float keySpeed = 30.0f;     // world units / секунду (клавиши)
+    float sensitivity = 0.005f;   
+    float panSpeed = 0.002f;  
+    float zoomSpeed = 0.5f;     
+    float keySpeed = 30.0f; 
     float minRadius = 0.5f;
     float maxRadius = 500.0f;
 
@@ -40,14 +28,13 @@ public:
     OrbitalCamera(float radius, float yaw, float pitch)
         : mRadius(radius), mYaw(yaw), mPitch(pitch) {}
 
-    // ?? ¬ызывай из WndProc ??????????????????????????????????
 
     void OnMouseDown(WPARAM btn, int x, int y)
     {
         mLastX = x; mLastY = y;
         if (btn & MK_LBUTTON) mDraggingL = true;
         if (btn & MK_RBUTTON) mDraggingR = true;
-        SetCapture(nullptr); // захват мыши снаружи (передай HWND если нужно)
+        SetCapture(nullptr); // захват мыши снаружи
     }
 
     void OnMouseUp(WPARAM btn)
@@ -68,7 +55,6 @@ public:
             // ¬ращение
             mYaw += dx * sensitivity;
             mPitch += dy * sensitivity;
-            mPitch = Clamp(mPitch, -XM_PIDIV2 + 0.01f, XM_PIDIV2 - 0.01f);
         }
         else if (mDraggingR)
         {
@@ -91,15 +77,14 @@ public:
             minRadius, maxRadius);
     }
 
-    // ?? ¬ызывай каждый кадр (dt Ч секунды) ?????????????????
 
     void Update(float dt)
     {
         // Zoom: W / S
         if (GetAsyncKeyState('W') & 0x8000 || GetAsyncKeyState(VK_UP) & 0x8000)
-            mRadius = Clamp(mRadius - keySpeed * dt, minRadius, maxRadius);
+            mRadius -= keySpeed * dt;
         if (GetAsyncKeyState('S') & 0x8000 || GetAsyncKeyState(VK_DOWN) & 0x8000)
-            mRadius = Clamp(mRadius + keySpeed * dt, minRadius, maxRadius);
+            mRadius += keySpeed * dt;
 
         // √оризонтальный pan: A / D
         XMVECTOR right = GetRight();
@@ -129,8 +114,6 @@ public:
         }
     }
 
-    // ?? ¬озвращает View-матрицу дл€ шейдера ?????????????????
-
     XMMATRIX GetViewMatrix() const
     {
         XMVECTOR eye = GetEyePosition();
@@ -139,7 +122,6 @@ public:
         return XMMatrixLookAtLH(eye, target, up);
     }
 
-    // ѕозици€ камеры (дл€ шейдера / EyePosW)
     XMFLOAT3 GetEyePosW() const
     {
         XMFLOAT3 pos;

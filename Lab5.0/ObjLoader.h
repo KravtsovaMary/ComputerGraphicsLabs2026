@@ -8,9 +8,6 @@
 #include <unordered_map>
 #include <algorithm>
 
-// ================================================================
-//  Вершина теперь содержит UV-координаты для текстурирования
-// ================================================================
 struct Vertex
 {
     float pos[3];      // POSITION
@@ -25,9 +22,6 @@ struct MeshData
     std::vector<uint32_t> indices;
 };
 
-// ================================================================
-//  Материал — читается из .mtl файла
-// ================================================================
 struct Material
 {
     std::string name;
@@ -38,18 +32,12 @@ struct Material
     float d = 1.0f;                    // прозрачность
 };
 
-// ================================================================
-//  Группа по материалу внутри меша
-// ================================================================
 struct MeshGroup
 {
     MeshData  mesh;
     Material  material;
 };
 
-// ----------------------------------------------------------------
-//  Парсер MTL
-// ----------------------------------------------------------------
 inline std::unordered_map<std::string, Material> LoadMTL(const std::string& path)
 {
     std::unordered_map<std::string, Material> mats;
@@ -97,8 +85,6 @@ inline std::unordered_map<std::string, Material> LoadMTL(const std::string& path
             size_t b = rest.find_last_not_of(" \t\r");
             if (b != std::string::npos) rest = rest.substr(0, b + 1);
 
-            // Если путь абсолютный (C:\... или /...) —
-            // берём только имя файла и кладём в textures/
             bool isAbsolute = (rest.size() >= 2 && rest[1] == ':') ||
                 (!rest.empty() && (rest[0] == '/' || rest[0] == '\\'));
             if (isAbsolute)
@@ -116,20 +102,12 @@ inline std::unordered_map<std::string, Material> LoadMTL(const std::string& path
     return mats;
 }
 
-// ----------------------------------------------------------------
-//  Вычислить директорию из пути к файлу
-// ----------------------------------------------------------------
 inline std::string DirOf(const std::string& path)
 {
     size_t p = path.find_last_of("/\\");
     return (p == std::string::npos) ? "" : path.substr(0, p + 1);
 }
 
-// ================================================================
-//  LoadOBJ  — поддержка v / vn / vt / f + mtllib / usemtl
-//  Возвращает список групп по материалам.
-//  Простой вариант: если у модели нет групп, всё идёт в одну.
-// ================================================================
 inline std::vector<MeshGroup> LoadOBJ(
     const std::string& path,
     float defaultR = 0.8f,
@@ -152,7 +130,6 @@ inline std::vector<MeshGroup> LoadOBJ(
     std::unordered_map<std::string, Material> allMats;
     std::string activeMat;
 
-    // Пары (vertKey → groupName) для разбивки по материалу
     struct FaceVert { int p = 0, t = -1, n = -1; };
 
     struct FaceGroup
@@ -162,7 +139,7 @@ inline std::vector<MeshGroup> LoadOBJ(
     };
 
     std::vector<FaceGroup> groups;
-    groups.push_back({ "", {} }); // группа по умолчанию
+    groups.push_back({ "", {} }); 
 
     auto currentGroup = [&]() -> FaceGroup& {
         return groups.back();
@@ -189,7 +166,6 @@ inline std::vector<MeshGroup> LoadOBJ(
         else if (tok == "vt")
         {
             Vec2 v{}; ss >> v.u >> v.v;
-            // OBJ V-ось идёт снизу вверх, DX12 — сверху вниз
             v.v = 1.0f - v.v;
             texcoords.push_back(v);
         }
@@ -215,7 +191,6 @@ inline std::vector<MeshGroup> LoadOBJ(
             while (ss >> ft)
             {
                 FaceVert fv{};
-                // Форматы: p   p/t   p//n   p/t/n
                 size_t s1 = ft.find('/');
                 fv.p = std::stoi(ft.substr(0, s1)) - 1;
 
@@ -245,9 +220,6 @@ inline std::vector<MeshGroup> LoadOBJ(
         }
     }
 
-    // ----------------------------------------------------------------
-    //  Строим MeshGroup для каждой группы
-    // ----------------------------------------------------------------
     std::vector<MeshGroup> result;
 
     for (auto& grp : groups)
@@ -255,15 +227,10 @@ inline std::vector<MeshGroup> LoadOBJ(
         if (grp.faces.empty()) continue;
 
         MeshGroup mg;
-        // заполнить материал
         auto it = allMats.find(grp.matName);
         if (it != allMats.end())
         {
             mg.material = it->second;
-            // Добавляем dir-префикс к пути текстуры чтобы путь был
-            // относительно рабочей директории (.exe), а не папки модели.
-            // Например: dir="model/"  map_Kd="textures/tex.dds"
-            //        -> diffuseTexture="model/textures/tex.dds"
             if (!mg.material.diffuseTexture.empty() && !dir.empty())
                 mg.material.diffuseTexture = dir + mg.material.diffuseTexture;
         }

@@ -5,14 +5,8 @@
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
 
-// ?? DirectXTK / DirectXTex для загрузки текстур ??????????????????
-// Подключите одну из библиотек в проект, например DirectXTex:
-//   https://github.com/Microsoft/DirectXTex
-// Или DDSTextureLoader из d3d12book:
-//   https://github.com/d3dcoder/d3d12book/blob/master/Common/DDSTextureLoader.h
-// Здесь используется DDSTextureLoader12 (Luna style):
-#include "DDSTextureLoader12.h"  // LoadDDSTextureFromFile
-#include "d3dx12.h"               // UpdateSubresources, GetRequiredIntermediateSize
+#include "DDSTextureLoader12.h"
+#include "d3dx12.h"  
 
 #pragma comment(lib, "d3dcompiler.lib")
 
@@ -20,14 +14,12 @@
 
 using namespace DirectX;
 
-// ================================================================
 
 D3DApp::D3DApp(HWND hwnd) : m_hWnd(hwnd)
 {
     InitD3D();
 }
 
-// ================================================================
 void D3DApp::InitD3D()
 {
     ComPtr<IDXGIFactory4> factory;
@@ -79,7 +71,6 @@ void D3DApp::InitD3D()
     CreateRTV();
     CreateDepthStencil();
 
-    // Fence создаём ПЕРВЫМ — он нужен внутри BuildTextures/FlushCommandQueue
     ThrowIfFailed(mDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)));
     mFenceValue = 0;
 
@@ -91,7 +82,6 @@ void D3DApp::InitD3D()
     BuildViewportScissor();
 }
 
-// ================================================================
 void D3DApp::CreateRTV()
 {
     D3D12_CPU_DESCRIPTOR_HANDLE handle =
@@ -105,7 +95,6 @@ void D3DApp::CreateRTV()
     }
 }
 
-// ================================================================
 void D3DApp::CreateDepthStencil()
 {
     D3D12_DESCRIPTOR_HEAP_DESC dsvDesc{};
@@ -147,15 +136,8 @@ void D3DApp::CreateDepthStencil()
         mDSVHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
-// ================================================================
-//  RootSignature:
-//    slot 0 ? таблица [CBV(b0)]
-//    slot 1 ? таблица [SRV(t0)]
-//    статический сэмплер s0
-// ================================================================
 void D3DApp::BuildRootSignature()
 {
-    // ?? Диапазоны дескрипторов ????????????????????????????????
     D3D12_DESCRIPTOR_RANGE cbvRange{};
     cbvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
     cbvRange.NumDescriptors = 1;
@@ -168,22 +150,18 @@ void D3DApp::BuildRootSignature()
     srvRange.BaseShaderRegister = 0;
     srvRange.OffsetInDescriptorsFromTableStart = 0;
 
-    // ?? Root параметры ????????????????????????????????????????
     D3D12_ROOT_PARAMETER params[2]{};
 
-    // slot 0: CBV таблица
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     params[0].DescriptorTable.NumDescriptorRanges = 1;
     params[0].DescriptorTable.pDescriptorRanges = &cbvRange;
     params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    // slot 1: SRV таблица (текстура)
     params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     params[1].DescriptorTable.NumDescriptorRanges = 1;
     params[1].DescriptorTable.pDescriptorRanges = &srvRange;
     params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-    // ?? Статический сэмплер (s0) — LINEAR WRAP ???????????????
     D3D12_STATIC_SAMPLER_DESC sampler{};
     sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -195,7 +173,7 @@ void D3DApp::BuildRootSignature()
     sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
     sampler.MinLOD = 0.0f;
     sampler.MaxLOD = D3D12_FLOAT32_MAX;
-    sampler.ShaderRegister = 0;   // s0
+    sampler.ShaderRegister = 0;
     sampler.RegisterSpace = 0;
     sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
@@ -214,20 +192,18 @@ void D3DApp::BuildRootSignature()
         IID_PPV_ARGS(&mRootSig)));
 }
 
-// ================================================================
 void D3DApp::BuildPSO()
 {
     auto vs = CompileShader(L"Shaders.hlsl", "VSMain", "vs_5_0");
     auto ps = CompileShader(L"Shaders.hlsl", "PSMain", "ps_5_0");
 
-    // Вершинный формат теперь включает TEXCOORD
     D3D12_INPUT_ELEMENT_DESC inputLayout[] =
     {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0,  0,
           D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 12,
           D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 24,   // ? новое
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 24,
           D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 32,
           D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -276,16 +252,10 @@ void D3DApp::BuildPSO()
     ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&mPSO)));
 }
 
-// ================================================================
-//  BuildConstantBuffer  — общая CBV/SRV-куча:
-//    слот 0 = CBV
-//    слоты 1..MaxTextures = SRV текстур
-// ================================================================
 void D3DApp::BuildConstantBuffer()
 {
-    // Создаём общую CBV_SRV_UAV кучу
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-    heapDesc.NumDescriptors = 1 + MaxTextures;    // CBV + SRVs
+    heapDesc.NumDescriptors = 1 + MaxTextures;
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(mDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mSrvHeap)));
@@ -323,13 +293,8 @@ void D3DApp::BuildConstantBuffer()
     mNextSrvIndex = 1; // следующий свободный слот для SRV
 }
 
-// ================================================================
-//  Загрузка DDS текстуры (DDSTextureLoader12)
-//  Возвращает индекс SRV в куче (?1) или -1 при ошибке
-// ================================================================
 int D3DApp::LoadTextureDDS(const std::wstring& path)
 {
-    // ?? Шаг 1: загрузить данные DDS с диска (без GPU upload) ?????
     ComPtr<ID3D12Resource> tex;
     std::unique_ptr<uint8_t[]> ddsData;
     std::vector<D3D12_SUBRESOURCE_DATA> subresources;
@@ -344,7 +309,6 @@ int D3DApp::LoadTextureDDS(const std::wstring& path)
     if (FAILED(hr))
         return -1;
 
-    // ?? Шаг 2: создать upload heap и скопировать данные на GPU ???
     const UINT64 uploadSize = GetRequiredIntermediateSize(
         tex.Get(), 0, (UINT)subresources.size());
 
@@ -366,11 +330,9 @@ int D3DApp::LoadTextureDDS(const std::wstring& path)
         &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr, IID_PPV_ARGS(&uploadBuf)));
 
-    // ?? Шаг 3: записать команды copy в command list ???????????????
     ThrowIfFailed(mCmdAllocator->Reset());
     ThrowIfFailed(mCmdList->Reset(mCmdAllocator.Get(), nullptr));
 
-    // Барьер: COMMON ? COPY_DEST
     {
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -389,7 +351,6 @@ int D3DApp::LoadTextureDDS(const std::wstring& path)
         (UINT)subresources.size(),
         subresources.data());
 
-    // Барьер: COPY_DEST ? PIXEL_SHADER_RESOURCE
     {
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -403,9 +364,8 @@ int D3DApp::LoadTextureDDS(const std::wstring& path)
     ThrowIfFailed(mCmdList->Close());
     ID3D12CommandList* cmds[] = { mCmdList.Get() };
     mCommandQueue->ExecuteCommandLists(1, cmds);
-    FlushCommandQueue();  // ждём пока GPU закончит копирование
+    FlushCommandQueue();
 
-    // ?? Шаг 4: создать SRV дескриптор ????????????????????????????
     int idx = mNextSrvIndex++;
     D3D12_CPU_DESCRIPTOR_HANDLE handle =
         mSrvHeap->GetCPUDescriptorHandleForHeapStart();
@@ -422,35 +382,27 @@ int D3DApp::LoadTextureDDS(const std::wstring& path)
     mDevice->CreateShaderResourceView(tex.Get(), &srvDesc, handle);
 
     mTextures.push_back(tex);
-    mTextureUploads.push_back(uploadBuf);  // держим до следующего FlushCommandQueue
+    mTextureUploads.push_back(uploadBuf);
 
     return idx;
 }
 
-// ================================================================
-//  BuildTextures — загружаем текстуры для всех объектов
-// ================================================================
 void D3DApp::BuildTextures()
 {
     for (auto& ri : mRenderItems)
     {
         if (!ri.material.diffuseTexture.empty())
         {
-            // Конвертируем string ? wstring
             std::wstring wpath(
                 ri.material.diffuseTexture.begin(),
                 ri.material.diffuseTexture.end());
 
-            // Пробуем загрузить DDS (можно добавить WIC для jpg/png)
             int idx = LoadTextureDDS(wpath);
             ri.SrvIndex = idx;
         }
     }
 }
 
-// ================================================================
-//  BuildGeometry — загружаем OBJ и создаём RenderItem на группу
-// ================================================================
 void D3DApp::BuildGeometry()
 {
     auto groups = LoadOBJ("model/model.obj");
@@ -510,7 +462,6 @@ void D3DApp::BuildGeometry()
     }
 }
 
-// ================================================================
 void D3DApp::BuildViewportScissor()
 {
     mViewport.TopLeftX = 0;
@@ -523,9 +474,6 @@ void D3DApp::BuildViewportScissor()
     mScissor = { 0, 0, mClientWidth, mClientHeight };
 }
 
-// ================================================================
-//  UpdateCB  — обновляем камеру и UV-анимацию
-// ================================================================
 void D3DApp::UpdateCB(float dt)
 {
     mTotalTime += dt;
@@ -543,43 +491,26 @@ void D3DApp::UpdateCB(float dt)
     XMStoreFloat4x4(&cb.WorldViewProj, XMMatrixTranspose(world * view * proj));
 
     cb.LightPosW = { 5.0f, 8.0f, -5.0f };
+    cb.EyePosW = mCamera.GetEyePosW();
 
-    XMFLOAT3 eyePos = mCamera.GetEyePosW();
-    cb.EyePosW = eyePos;
-
-    float distanceToObject = sqrt(eyePos.x * eyePos.x + eyePos.y * eyePos.y + eyePos.z * eyePos.z);
-    //cb.EyePosW = mCamera.GetEyePosW();
-    float speedScale = mReferenceDistance / max(distanceToObject, 0.5f); // избегаем деления на 0
-    speedScale = Clamp(speedScale, 0.5f, 3.0f); // ограничиваем масштаб
-
-    float currentSpeed = mBaseAnimationSpeed * speedScale;
-    currentSpeed = Clamp(currentSpeed, mMinSpeed, mMaxSpeed);
     cb.DiffuseColor = { 0.8f, 0.8f, 0.8f, 1.0f };
     cb.SpecColorPower = { 1.0f, 1.0f, 1.0f, 32.0f };
 
-    // ?? Текстурная анимация: прокрутка + тайлинг ?????????????
-    // Тайлинг: текстура повторяется 2x2
     cb.UVTileX = 2.0f;
     cb.UVTileY = 2.0f;
-    // Анимация: медленная прокрутка по U
-    cb.UVOffsetX = mTotalTime * currentSpeed;   // скорость прокрутки
+    cb.UVOffsetX = mTotalTime * 0.05f;
     cb.UVOffsetY = 0.0f;
 
-    // UseTexture проставляется в Draw() отдельно для каждого объекта
     cb.UseTexture = 0;
 
     memcpy(mCbvMappedData, &cb, sizeof(cb));
 }
 
-// ================================================================
-//  Draw
-// ================================================================
 void D3DApp::Draw()
 {
     ThrowIfFailed(mCmdAllocator->Reset());
     ThrowIfFailed(mCmdList->Reset(mCmdAllocator.Get(), nullptr));
 
-    // PRESENT ? RENDER_TARGET
     {
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -611,25 +542,20 @@ void D3DApp::Draw()
     mCmdList->SetGraphicsRootSignature(mRootSig.Get());
     mCmdList->SetPipelineState(mPSO.Get());
 
-    // Устанавливаем общую CBV/SRV кучу
     ID3D12DescriptorHeap* heaps[] = { mSrvHeap.Get() };
     mCmdList->SetDescriptorHeaps(1, heaps);
 
-    // slot 0: CBV (дескриптор в позиции 0 кучи)
     mCmdList->SetGraphicsRootDescriptorTable(
         0, mSrvHeap->GetGPUDescriptorHandleForHeapStart());
 
     mCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    // ?? Рисуем каждый RenderItem ?????????????????????????????
     for (const auto& ri : mRenderItems)
     {
-        // Обновляем UseTexture в CB
-        // Патчируем только это поле без пересчёта матриц
         bool hasTexture = (ri.SrvIndex >= 1);
         PerObjectCB* cbPtr = reinterpret_cast<PerObjectCB*>(mCbvMappedData);
         cbPtr->UseTexture = hasTexture ? 1 : 0;
-        // Диффузный цвет из материала (используется когда нет текстуры)
+
         cbPtr->DiffuseColor = {
             ri.material.Kd[0], ri.material.Kd[1], ri.material.Kd[2], 1.0f
         };
@@ -640,7 +566,6 @@ void D3DApp::Draw()
 
         if (hasTexture)
         {
-            // slot 1: SRV текстуры этого объекта
             D3D12_GPU_DESCRIPTOR_HANDLE srvGpu =
                 mSrvHeap->GetGPUDescriptorHandleForHeapStart();
             srvGpu.ptr += (SIZE_T)ri.SrvIndex * (SIZE_T)mSrvDescriptorSize;
@@ -648,10 +573,6 @@ void D3DApp::Draw()
         }
         else
         {
-            // Указываем на слот 0 (CBV) — шейдер всё равно не будет
-            // сэмплировать (UseTexture == 0), но дескриптор должен
-            // быть валидным — указываем на первый SRV если есть,
-            // иначе на CBV (безопасно при UseTexture=0).
             mCmdList->SetGraphicsRootDescriptorTable(
                 1, mSrvHeap->GetGPUDescriptorHandleForHeapStart());
         }
@@ -661,7 +582,6 @@ void D3DApp::Draw()
         mCmdList->DrawIndexedInstanced(ri.IndexCount, 1, 0, 0, 0);
     }
 
-    // RENDER_TARGET ? PRESENT
     {
         D3D12_RESOURCE_BARRIER barrier{};
         barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -683,7 +603,6 @@ void D3DApp::Draw()
     FlushCommandQueue();
 }
 
-// ================================================================
 void D3DApp::FlushCommandQueue()
 {
     mFenceValue++;
@@ -698,7 +617,6 @@ void D3DApp::FlushCommandQueue()
     }
 }
 
-// ================================================================
 ComPtr<ID3DBlob> D3DApp::CompileShader(
     const wchar_t* filename,
     const char* entry,

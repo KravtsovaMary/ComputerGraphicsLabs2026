@@ -4,18 +4,17 @@
 #include "GameTimer.h"
 
 HWND    g_hWnd = nullptr;
-D3DApp* g_pApp = nullptr;   // глобальный указатель — доступен из WndProc
+D3DApp* g_pApp = nullptr;
 
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg)
     {
-        // ── Мышь ────────────────────────────────────────────────
     case WM_LBUTTONDOWN:
     case WM_RBUTTONDOWN:
         if (g_pApp) g_pApp->OnMouseDown(wParam, LOWORD(lParam), HIWORD(lParam));
-        SetCapture(hWnd);   // захват мыши — события идут даже за пределами окна
+        SetCapture(hWnd);
         return 0;
 
     case WM_LBUTTONUP:
@@ -32,13 +31,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         if (g_pApp) g_pApp->OnMouseWheel(GET_WHEEL_DELTA_WPARAM(wParam));
         return 0;
 
-        // ── Клавиатура ──────────────────────────────────────────
     case WM_KEYDOWN:
         if (wParam == VK_ESCAPE)
             PostQuitMessage(0);
         return 0;
 
-        // ── Закрытие ────────────────────────────────────────────
     case WM_CLOSE:
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -91,7 +88,7 @@ int Run()
     timer.Reset();
 
     D3DApp app(g_hWnd);
-    g_pApp = &app;          // теперь WndProc может вызывать методы app
+    g_pApp = &app;
 
     while (msg.message != WM_QUIT)
     {
@@ -103,7 +100,7 @@ int Run()
         else
         {
             timer.Tick();
-            app.UpdateCB(timer.DeltaTime());  // передаём dt, не TotalTime!
+            app.UpdateCB(timer.DeltaTime());
             app.Draw();
         }
     }
