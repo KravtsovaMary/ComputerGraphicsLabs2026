@@ -9,6 +9,7 @@
 #include <string>
 #include "d3dx12.h"
 #include "Math.h"
+#include "RenderingSystem.h"
 
 
 
@@ -148,6 +149,8 @@ private:
 	D3D12_VIEWPORT viewport;
 	D3D12_RECT scissorRect;
 
+	RenderingSystem renderingSystem;
+
 	Camera camera;
 	float time;
 
@@ -157,6 +160,9 @@ private:
 	bool mousePressed;
 	float cameraYaw;
 	float cameraPitch;
+
+	float animationSpeed = 0.0f;
+	float uvOffsetAccumulated = 0.0f;
 
 };
 
