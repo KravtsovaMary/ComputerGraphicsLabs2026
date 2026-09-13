@@ -5,6 +5,8 @@
 #include <vector>
 #include "d3dx12.h"
 #include "GBuffer.h"
+#include "SceneCulling.h"
+#include <DirectXMath.h>
 
 using Microsoft::WRL::ComPtr;
 
@@ -56,6 +58,9 @@ public:
 	ID3D12RootSignature* GetGeometryRootSignature() const { return geometryRootSignature.Get(); }
 	ID3D12PipelineState* GetGeometryPSO() const { return geometryPSO.Get(); }
 
+	ID3D12RootSignature* GetProceduralRootSignature() const { return proceduralRootSignature.Get(); }
+	ID3D12PipelineState* GetProceduralPSO() const { return proceduralPSO.Get(); }
+
 	ID3D12RootSignature* GetTessellationRootSignature() const { return tessellationRootSignature.Get(); }
 	ID3D12PipelineState* GetTessellationPSO() const { return tessellationPSO.Get(); }
 	ID3D12PipelineState* GetTessellationWireframePSO() const { return tessellationWireframePSO.Get(); }
@@ -65,8 +70,30 @@ public:
 
 	GBuffer* GetGBuffer() { return &gBuffer; }
 
+	bool InitializeScene(ID3D12Device* device, UINT cubeCount, UINT sphereCount);
+	void BuildOctree();
+	void UpdateFrustum(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& projection);
+	void CollectVisibleObjects(const DirectX::XMFLOAT3& cameraPos);
+	void SetFrustumCulling(bool enabled) { useFrustumCulling = enabled; }
+	void SetOctreeEnabled(bool enabled) { useOctree = enabled; }
+	bool GetFrustumCulling() const { return useFrustumCulling; }
+	bool GetOctreeEnabled() const { return useOctree; }
+	const std::vector<Scene::SceneObject>& GetSceneObjects() const { return sceneObjects; }
+	const std::vector<uint32_t>& GetVisibleIndices() const { return visibleIndices; }
+	ID3D12Resource* GetCubeVertexBuffer() const { return cubeVB.Get(); }
+	ID3D12Resource* GetCubeIndexBuffer() const { return cubeIB.Get(); }
+	ID3D12Resource* GetSphereVertexBuffer() const { return sphereVB.Get(); }
+	ID3D12Resource* GetSphereIndexBuffer() const { return sphereIB.Get(); }
+	D3D12_VERTEX_BUFFER_VIEW GetCubeVBView() const { return cubeVBView; }
+	D3D12_INDEX_BUFFER_VIEW GetCubeIBView() const { return cubeIBView; }
+	D3D12_VERTEX_BUFFER_VIEW GetSphereVBView() const { return sphereVBView; }
+	D3D12_INDEX_BUFFER_VIEW GetSphereIBView() const { return sphereIBView; }
+	UINT GetCubeIndexCount() const { return cubeIndexCount; }
+	UINT GetSphereIndexCount() const { return sphereIndexCount; }
+
 private:
 	bool CreateGeometryPass(ID3D12Device* device);
+	bool CreateProceduralPass(ID3D12Device* device);
 	bool CreateTessellationPass(ID3D12Device* device);
 	bool CreateLightingPass(ID3D12Device* device);
 	bool CompileShaders(ID3D12Device* device);
@@ -81,6 +108,9 @@ private:
 	ComPtr<ID3D12RootSignature> geometryRootSignature;
 	ComPtr<ID3D12PipelineState> geometryPSO;
 
+	ComPtr<ID3D12RootSignature> proceduralRootSignature;
+	ComPtr<ID3D12PipelineState> proceduralPSO;
+
 	ComPtr<ID3D12RootSignature> tessellationRootSignature;
 	ComPtr<ID3D12PipelineState> tessellationPSO;
 	ComPtr<ID3D12PipelineState> tessellationWireframePSO;
@@ -90,6 +120,8 @@ private:
 
 	ComPtr<ID3DBlob> geometryVS;
 	ComPtr<ID3DBlob> geometryPS;
+	ComPtr<ID3DBlob> proceduralVS;
+	ComPtr<ID3DBlob> proceduralPS;
 	ComPtr<ID3DBlob> tessellationVS;
 	ComPtr<ID3DBlob> tessellationHS;
 	ComPtr<ID3DBlob> tessellationDS;
@@ -111,4 +143,20 @@ private:
 
 	float cameraPosition[3];
 	float debugMode;
+	std::vector<Scene::SceneObject> sceneObjects;
+	Scene::Octree octree;
+	Scene::Frustum frustum;
+	std::vector<uint32_t> visibleIndices;
+	bool useFrustumCulling;
+	bool useOctree;
+	ComPtr<ID3D12Resource> cubeVB;
+	ComPtr<ID3D12Resource> cubeIB;
+	ComPtr<ID3D12Resource> sphereVB;
+	ComPtr<ID3D12Resource> sphereIB;
+	D3D12_VERTEX_BUFFER_VIEW cubeVBView;
+	D3D12_INDEX_BUFFER_VIEW cubeIBView;
+	D3D12_VERTEX_BUFFER_VIEW sphereVBView;
+	D3D12_INDEX_BUFFER_VIEW sphereIBView;
+	UINT cubeIndexCount;
+	UINT sphereIndexCount;
 };

@@ -1,10 +1,11 @@
 #pragma once
+#include <windows.h>
 #include <vector>
 #include <string>
 #include <fstream>
 #include <sstream>
 #include <map>
-#include "App.h"
+#include <algorithm>
 
 struct OBJVertex
 {
@@ -13,6 +14,32 @@ struct OBJVertex
 	float normal[3];
 	float texCoord[2];
 };
+
+struct Material
+{
+	std::string name;
+	std::string diffuseTexture;
+	std::string displacementTexture;
+	std::string normalTexture;
+	float diffuseColor[3];
+};
+struct Submesh
+{
+	UINT indexStart;
+	UINT indexCount;
+	UINT textureIndex;
+};
+namespace Obj
+{
+	struct MeshVertex
+	{
+		float px, py, pz;
+		float nx, ny, nz;
+		float u, v;
+		float tx, ty, tz;
+		float tw;
+	};
+}
 
 class OBJLoader
 {
@@ -155,7 +182,7 @@ public:
 
 					if (!currentMaterial.empty())
 					{
-						materialIndices[currentMaterial].push_back((UINT32)posIndices.size() - 1);
+						materialIndices[currentMaterial].push_back((uint32_t)posIndices.size() - 1);
 					}
 				}
 			}

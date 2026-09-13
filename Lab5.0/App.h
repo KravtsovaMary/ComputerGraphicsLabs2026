@@ -10,19 +10,11 @@
 #include "d3dx12.h"
 #include "Math.h"
 #include "RenderingSystem.h"
+#include "OBJLoader.h"
 
 
 
 using Microsoft::WRL::ComPtr;
-
-struct Material
-{
-	std::string name;
-	std::string diffuseTexture;
-	std::string displacementTexture;
-	std::string normalTexture;
-	float diffuseColor[3];
-};
 
 struct Vertex
 {
@@ -30,13 +22,6 @@ struct Vertex
 	float color[4];
 	float normal[3];
 	float texCoord[2];
-};
-
-struct Submesh
-{
-	UINT indexStart;
-	UINT indexCount;
-	UINT textureIndex;
 };
 
 struct ObjectConstants
@@ -54,6 +39,13 @@ struct ObjectConstants
 	float maxTessDistance;
 	float minTessFactor;
 	float maxTessFactor;
+};
+
+struct SimpleObjectConstants
+{
+	float worldViewProj[16];
+	float world[16];
+	float color[4];
 };
 
 class App

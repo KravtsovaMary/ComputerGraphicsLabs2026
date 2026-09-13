@@ -11,6 +11,10 @@ RenderingSystem::RenderingSystem()
 	cameraPosition[1] = 0.0f;
 	cameraPosition[2] = 0.0f;
 	debugMode = 0.0f;
+	useFrustumCulling = true;
+	useOctree = true;
+	cubeIndexCount = 0;
+	sphereIndexCount = 0;
 }
 
 RenderingSystem::~RenderingSystem()
@@ -37,6 +41,9 @@ bool RenderingSystem::Initialize(ID3D12Device* device, UINT width, UINT height)
 		return false;
 
 	if (!CreateGeometryPass(device))
+		return false;
+
+	if (!CreateProceduralPass(device))
 		return false;
 
 	if (!CreateTessellationPass(device))
@@ -187,6 +194,8 @@ bool RenderingSystem::CompileShaders(ID3D12Device* device)
 {
 	geometryVS = CompileShader(L"GeometryPass.hlsl", "VSMain", "vs_5_0");
 	geometryPS = CompileShader(L"GeometryPass.hlsl", "PSMain", "ps_5_0");
+	proceduralVS = CompileShader(L"ProceduralObject.hlsl", "VSMain", "vs_5_0");
+	proceduralPS = CompileShader(L"ProceduralObject.hlsl", "PSMain", "ps_5_0");
 	tessellationVS = CompileShader(L"TessellationPass.hlsl", "VSMain", "vs_5_0");
 	tessellationHS = CompileShader(L"TessellationPass.hlsl", "HSMain", "hs_5_0");
 	tessellationDS = CompileShader(L"TessellationPass.hlsl", "DSMain", "ds_5_0");
@@ -195,6 +204,9 @@ bool RenderingSystem::CompileShaders(ID3D12Device* device)
 	lightingPS = CompileShader(L"LightingPass.hlsl", "PSMain", "ps_5_0");
 
 	if (!geometryVS || !geometryPS || !lightingVS || !lightingPS)
+		return false;
+
+	if (!proceduralVS || !proceduralPS)
 		return false;
 
 	if (!tessellationVS || !tessellationHS || !tessellationDS || !tessellationPS)
@@ -271,6 +283,51 @@ bool RenderingSystem::CreateGeometryPass(ID3D12Device* device)
 	if (FAILED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&geometryPSO))))
 		return false;
 
+	return true;
+}
+
+bool RenderingSystem::CreateProceduralPass(ID3D12Device* device)
+{
+	CD3DX12_ROOT_PARAMETER rootParameters[1];
+	rootParameters[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_ALL);
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, rootParameters, 0, nullptr,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	ComPtr<ID3DBlob> serializedRootSig;
+	ComPtr<ID3DBlob> errorBlob;
+	if (FAILED(D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf())))
+		return false;
+	if (FAILED(device->CreateRootSignature(0, serializedRootSig->GetBufferPointer(),
+		serializedRootSig->GetBufferSize(), IID_PPV_ARGS(&proceduralRootSignature))))
+		return false;
+	D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT", 1, DXGI_FORMAT_R32_FLOAT, 0, 44, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.pRootSignature = proceduralRootSignature.Get();
+	psoDesc.VS.pShaderBytecode = proceduralVS->GetBufferPointer();
+	psoDesc.VS.BytecodeLength = proceduralVS->GetBufferSize();
+	psoDesc.PS.pShaderBytecode = proceduralPS->GetBufferPointer();
+	psoDesc.PS.BytecodeLength = proceduralPS->GetBufferSize();
+	psoDesc.InputLayout.pInputElementDescs = inputLayout;
+	psoDesc.InputLayout.NumElements = _countof(inputLayout);
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.NumRenderTargets = 3;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	psoDesc.RTVFormats[1] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	psoDesc.RTVFormats[2] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	psoDesc.SampleDesc.Count = 1;
+	if (FAILED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&proceduralPSO))))
+		return false;
 	return true;
 }
 
@@ -527,4 +584,107 @@ void RenderingSystem::Resize(ID3D12Device* device, UINT width, UINT height)
 	this->width = width;
 	this->height = height;
 	gBuffer.Resize(device, width, height);
+}
+
+bool RenderingSystem::InitializeScene(ID3D12Device* device, UINT cubeCount, UINT sphereCount)
+{
+	using namespace DirectX;
+	Scene::Aabb spawnRegion;
+	spawnRegion.min = XMFLOAT3{ -15.0f, 0.0f, -15.0f };
+	spawnRegion.max = XMFLOAT3{ 15.0f, 10.0f, 15.0f };
+	Scene::ScatterCubesAndSpheres(sceneObjects, cubeCount, sphereCount, spawnRegion, 42);
+	Scene::ProceduralMesh cubeMesh, sphereMesh;
+	Scene::BuildUnitCube(cubeMesh);
+	Scene::BuildUvSphere(sphereMesh, 12, 18, 0.5f);
+	D3D12_HEAP_PROPERTIES uploadHeap = {};
+	uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
+	D3D12_RESOURCE_DESC bufferDesc = {};
+	bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	bufferDesc.Height = 1;
+	bufferDesc.DepthOrArraySize = 1;
+	bufferDesc.MipLevels = 1;
+	bufferDesc.Format = DXGI_FORMAT_UNKNOWN;
+	bufferDesc.SampleDesc.Count = 1;
+	bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	UINT cubeVBSize = (UINT)(cubeMesh.vertices.size() * sizeof(Obj::MeshVertex));
+	UINT cubeIBSize = (UINT)(cubeMesh.indices.size() * sizeof(uint32_t));
+	UINT sphereVBSize = (UINT)(sphereMesh.vertices.size() * sizeof(Obj::MeshVertex));
+	UINT sphereIBSize = (UINT)(sphereMesh.indices.size() * sizeof(uint32_t));
+	cubeIndexCount = (UINT)cubeMesh.indices.size();
+	sphereIndexCount = (UINT)sphereMesh.indices.size();
+	bufferDesc.Width = cubeVBSize;
+	if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cubeVB))))
+		return false;
+	bufferDesc.Width = cubeIBSize;
+	if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&cubeIB))))
+		return false;
+	bufferDesc.Width = sphereVBSize;
+	if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&sphereVB))))
+		return false;
+	bufferDesc.Width = sphereIBSize;
+	if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&sphereIB))))
+		return false;
+	UINT8* pData;
+	D3D12_RANGE readRange = { 0, 0 };
+	cubeVB->Map(0, &readRange, reinterpret_cast<void**>(&pData));
+	memcpy(pData, cubeMesh.vertices.data(), cubeVBSize);
+	cubeVB->Unmap(0, nullptr);
+	cubeIB->Map(0, &readRange, reinterpret_cast<void**>(&pData));
+	memcpy(pData, cubeMesh.indices.data(), cubeIBSize);
+	cubeIB->Unmap(0, nullptr);
+	sphereVB->Map(0, &readRange, reinterpret_cast<void**>(&pData));
+	memcpy(pData, sphereMesh.vertices.data(), sphereVBSize);
+	sphereVB->Unmap(0, nullptr);
+	sphereIB->Map(0, &readRange, reinterpret_cast<void**>(&pData));
+	memcpy(pData, sphereMesh.indices.data(), sphereIBSize);
+	sphereIB->Unmap(0, nullptr);
+	cubeVBView.BufferLocation = cubeVB->GetGPUVirtualAddress();
+	cubeVBView.StrideInBytes = sizeof(Obj::MeshVertex);
+	cubeVBView.SizeInBytes = cubeVBSize;
+	cubeIBView.BufferLocation = cubeIB->GetGPUVirtualAddress();
+	cubeIBView.Format = DXGI_FORMAT_R32_UINT;
+	cubeIBView.SizeInBytes = cubeIBSize;
+	sphereVBView.BufferLocation = sphereVB->GetGPUVirtualAddress();
+	sphereVBView.StrideInBytes = sizeof(Obj::MeshVertex);
+	sphereVBView.SizeInBytes = sphereVBSize;
+	sphereIBView.BufferLocation = sphereIB->GetGPUVirtualAddress();
+	sphereIBView.Format = DXGI_FORMAT_R32_UINT;
+	sphereIBView.SizeInBytes = sphereIBSize;
+	BuildOctree();
+	return true;
+}
+void RenderingSystem::BuildOctree()
+{
+	if (sceneObjects.empty())
+		return;
+	Scene::Aabb sceneBounds;
+	sceneBounds.min = DirectX::XMFLOAT3{ FLT_MAX, FLT_MAX, FLT_MAX };
+	sceneBounds.max = DirectX::XMFLOAT3{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
+	for (const auto& obj : sceneObjects)
+	{
+		sceneBounds.Merge(obj.worldBounds);
+	}
+	octree.Build(sceneObjects, sceneBounds);
+}
+void RenderingSystem::UpdateFrustum(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& projection)
+{
+	frustum.FromViewAndProjection(view, projection);
+}
+void RenderingSystem::CollectVisibleObjects(const DirectX::XMFLOAT3& cameraPos)
+{
+	Scene::CollectVisibleObjects(
+		sceneObjects,
+		frustum,
+		useFrustumCulling,
+		useOctree,
+		octree,
+		cameraPos,
+		1000.0f,
+		false,
+		visibleIndices
+	);
 }
