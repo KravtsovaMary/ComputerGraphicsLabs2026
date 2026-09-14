@@ -7,16 +7,13 @@
 #include "GBuffer.h"
 #include "SceneCulling.h"
 #include <DirectXMath.h>
-
 using Microsoft::WRL::ComPtr;
-
 enum class LightType
 {
 	Directional = 0,
 	Point = 1,
 	Spot = 2
 };
-
 struct Light
 {
 	float position[3];
@@ -28,48 +25,56 @@ struct Light
 	float spotAngle;
 	float padding[3];
 };
-
 struct LightingConstants
 {
 	float cameraPosition[3];
 	float debugMode;
 	int numLights;
-	float padding2[3];
+	int shadowsEnabled;
+	int pcfEnabled;
+	float shadowMapSize;
+	float cascadeSplits[4];
+	float cameraForward[3];
+	float padding2;
+	float cascadeViewProj[4][16];
 };
-
 class RenderingSystem
 {
 public:
 	RenderingSystem();
 	~RenderingSystem();
-
 	bool Initialize(ID3D12Device* device, UINT width, UINT height);
 	void Resize(ID3D12Device* device, UINT width, UINT height);
-
 	void BeginGeometryPass(ID3D12GraphicsCommandList* commandList);
 	void EndGeometryPass(ID3D12GraphicsCommandList* commandList);
-
 	void RenderLightingPass(ID3D12GraphicsCommandList* commandList, ID3D12Resource* backBuffer, D3D12_CPU_DESCRIPTOR_HANDLE backBufferRTV);
-
 	void AddLight(const Light& light);
 	void ClearLights();
 	void UpdateLights(ID3D12GraphicsCommandList* commandList);
-
 	ID3D12RootSignature* GetGeometryRootSignature() const { return geometryRootSignature.Get(); }
 	ID3D12PipelineState* GetGeometryPSO() const { return geometryPSO.Get(); }
-
 	ID3D12RootSignature* GetProceduralRootSignature() const { return proceduralRootSignature.Get(); }
 	ID3D12PipelineState* GetProceduralPSO() const { return proceduralPSO.Get(); }
-
 	ID3D12RootSignature* GetTessellationRootSignature() const { return tessellationRootSignature.Get(); }
 	ID3D12PipelineState* GetTessellationPSO() const { return tessellationPSO.Get(); }
 	ID3D12PipelineState* GetTessellationWireframePSO() const { return tessellationWireframePSO.Get(); }
-
+	ID3D12RootSignature* GetBillboardRootSignature() const { return billboardRootSignature.Get(); }
+	ID3D12PipelineState* GetBillboardPSO() const { return billboardPSO.Get(); }
+	ID3D12RootSignature* GetShadowRootSignature() const { return shadowRootSignature.Get(); }
+	ID3D12PipelineState* GetShadowPSO() const { return shadowPSO.Get(); }
+	void UpdateCascades(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& projection,
+		float cameraNear, float cameraFar, float shadowDistance, const DirectX::XMFLOAT3& lightDirection);
+	void BeginShadowPass(ID3D12GraphicsCommandList* commandList);
+	void SetShadowCascade(ID3D12GraphicsCommandList* commandList, UINT cascadeIndex);
+	void EndShadowPass(ID3D12GraphicsCommandList* commandList);
+	const DirectX::XMFLOAT4X4& GetCascadeMatrix(UINT index) const { return cascadeViewProj[index]; }
+	void SetShadowsEnabled(bool enabled) { shadowsEnabled = enabled; }
+	void SetPCFEnabled(bool enabled) { pcfEnabled = enabled; }
+	bool GetShadowsEnabled() const { return shadowsEnabled; }
+	bool GetPCFEnabled() const { return pcfEnabled; }
 	void SetCameraPosition(float x, float y, float z);
 	void SetDebugMode(float mode) { debugMode = mode; }
-
 	GBuffer* GetGBuffer() { return &gBuffer; }
-
 	bool InitializeScene(ID3D12Device* device, UINT cubeCount, UINT sphereCount);
 	void BuildOctree();
 	void UpdateFrustum(const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& projection);
@@ -90,34 +95,32 @@ public:
 	D3D12_INDEX_BUFFER_VIEW GetSphereIBView() const { return sphereIBView; }
 	UINT GetCubeIndexCount() const { return cubeIndexCount; }
 	UINT GetSphereIndexCount() const { return sphereIndexCount; }
-
 private:
 	bool CreateGeometryPass(ID3D12Device* device);
 	bool CreateProceduralPass(ID3D12Device* device);
 	bool CreateTessellationPass(ID3D12Device* device);
+	bool CreateBillboardPass(ID3D12Device* device);
 	bool CreateLightingPass(ID3D12Device* device);
+	bool CreateShadowPass(ID3D12Device* device);
+	bool CreateShadowResources(ID3D12Device* device);
 	bool CompileShaders(ID3D12Device* device);
-
 	ComPtr<ID3DBlob> CompileShader(const wchar_t* filename, const char* entryPoint, const char* target);
-
 	UINT width;
 	UINT height;
-
 	GBuffer gBuffer;
-
 	ComPtr<ID3D12RootSignature> geometryRootSignature;
 	ComPtr<ID3D12PipelineState> geometryPSO;
-
 	ComPtr<ID3D12RootSignature> proceduralRootSignature;
 	ComPtr<ID3D12PipelineState> proceduralPSO;
-
 	ComPtr<ID3D12RootSignature> tessellationRootSignature;
 	ComPtr<ID3D12PipelineState> tessellationPSO;
 	ComPtr<ID3D12PipelineState> tessellationWireframePSO;
-
+	ComPtr<ID3D12RootSignature> billboardRootSignature;
+	ComPtr<ID3D12PipelineState> billboardPSO;
 	ComPtr<ID3D12RootSignature> lightingRootSignature;
 	ComPtr<ID3D12PipelineState> lightingPSO;
-
+	ComPtr<ID3D12RootSignature> shadowRootSignature;
+	ComPtr<ID3D12PipelineState> shadowPSO;
 	ComPtr<ID3DBlob> geometryVS;
 	ComPtr<ID3DBlob> geometryPS;
 	ComPtr<ID3DBlob> proceduralVS;
@@ -126,23 +129,34 @@ private:
 	ComPtr<ID3DBlob> tessellationHS;
 	ComPtr<ID3DBlob> tessellationDS;
 	ComPtr<ID3DBlob> tessellationPS;
+	ComPtr<ID3DBlob> billboardVS;
+	ComPtr<ID3DBlob> billboardPS;
 	ComPtr<ID3DBlob> lightingVS;
 	ComPtr<ID3DBlob> lightingPS;
-
+	ComPtr<ID3DBlob> shadowVS;
 	std::vector<Light> lights;
 	ComPtr<ID3D12Resource> lightBuffer;
 	ComPtr<ID3D12DescriptorHeap> lightBufferHeap;
 	UINT8* lightBufferMapped;
-
 	ComPtr<ID3D12Resource> lightingConstantBuffer;
 	ComPtr<ID3D12DescriptorHeap> lightingCBHeap;
 	UINT8* lightingCBMapped;
-
 	ComPtr<ID3D12Resource> fullscreenQuadVB;
 	D3D12_VERTEX_BUFFER_VIEW fullscreenQuadVBView;
-
 	float cameraPosition[3];
 	float debugMode;
+	static const UINT CASCADE_COUNT = 4;
+	static const UINT SHADOW_MAP_SIZE = 2048;
+	ComPtr<ID3D12Resource> shadowMap;
+	ComPtr<ID3D12DescriptorHeap> shadowDSVHeap;
+	DirectX::XMFLOAT4X4 cascadeViewProj[CASCADE_COUNT];
+	float cascadeSplits[CASCADE_COUNT];
+	float stableCascadeRadii[CASCADE_COUNT];
+	bool cascadeRadiiInitialized;
+	float cameraForward[3];
+	bool shadowMapInDepthWriteState;
+	bool shadowsEnabled;
+	bool pcfEnabled;
 	std::vector<Scene::SceneObject> sceneObjects;
 	Scene::Octree octree;
 	Scene::Frustum frustum;

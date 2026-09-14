@@ -1,0 +1,9 @@
+﻿  App.cpp
+C:\Users\HUAWEI\Documents\GitHub\ComputerGraphicsLabs2026\App.cpp(135,20): warning C4244: =: преобразование "int" в "FLOAT", возможна потеря данных
+C:\Users\HUAWEI\Documents\GitHub\ComputerGraphicsLabs2026\App.cpp(136,19): warning C4244: =: преобразование "int" в "FLOAT", возможна потеря данных
+  GBuffer.cpp
+  main.cpp
+  RenderingSystem.cpp
+  SceneCulling.cpp
+  Создание кода...
+  CG.vcxproj -> C:\Users\HUAWEI\Documents\GitHub\ComputerGraphicsLabs2026\x64\Debug\CG.exe
